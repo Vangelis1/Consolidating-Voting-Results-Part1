@@ -1,0 +1,289 @@
+
+
+
+***********************************************************************************************
+*                                                                                             *
+*  To run this model by using the BARON software, go to the follwing webpage and follow the   * 
+*  obvious instructions (i.e., enter the file name and an email address to get the            *
+*  results back):                                                                             *
+*                                                                                             *
+*    https://neos-server.org/neos/solvers/go:BARON/GAMS.html                                  *
+*                                                                                             *
+***********************************************************************************************
+*											      *
+* This optimzation model is based on the data of the illustrative example described in  *
+* Section 3.2 of the paper entitled "An Optimization Approach for Consolidating the Ranking   *
+* Results from a Group of Voters." (This title may have changed since this time).	      *
+*											      *
+* This code was written by Evangelos Triantaphyllou during the summer / fall of 2022 and the  *
+* spring of 2023.  									      *
+* Today's date:  January 21, 2023.                                                            *
+*											      *									      *
+***********************************************************************************************
+*
+* This optimzation model is based on the real data published in [Boroushaki and Malczewski, 2010]:
+*                Boroushaki S, Malczewski J (2010). Measuring consensus for collaborative 
+*                decision-making: A GIS-based approach. 
+*                Comput Environ and Urban Syst 34(4):322-332.
+*
+* We have used the data from the above publication in some other publications by our team.  That is: 
+*                Triantaphyllou, E., Hou, F. and Yanase, J., 2020. Analysis of the final ranking 
+*                decisions made by experts after a consensus has been reached in group decision making. 
+*                Group Decision and Negotiation, 29(2), pp.271-291.
+*
+* The Rankings by the Six Experts / Voters and the Consensus Solution reached by them (according to 
+* [Boroushaki and Malczewski, 2010]) are as follows:
+* 
+* Expert E1:	R4 > R1 > R3 > R2 > R5
+* Expert E2:	R5 > R1 > R2 > R4 > R3
+* Expert E3: 	R1 > R4 ~ R5 > R2 > R3
+* Expert E4:	R1 ~ R5 > R2 ~ R3 ~ R4
+* Expert E5:	R1 > R5 > R4 > R2 > R3
+* Expert E6:	R1 > R5 > R4 > R2 > R3
+*
+* Consensus:	R1 > R5 > R2 > R4 > R3
+* 
+*************************************************************************************************
+
+***********************************************************************************************
+*                                                                                             *
+*  The MAIN GOAL of this program is to derive the CONSOLIDATED RANKING from the data of this  *
+*  illustrative example.                                                                      *
+*                                                                                             *
+***********************************************************************************************
+
+***********************************************************************************************
+* The following program is written in GAMS:						      *
+* GAMS = "G e n e r a l   A l g e b r a i c   M o d e l i n g   S y s t e m"		      *
+***********************************************************************************************
+
+***********************************************************************************************
+* If you use this software, please cite publications from				      *
+*  https://minlp.com/baron-publications, such as: 					      *
+*											      *
+* Khajavirad, A. and N. V. Sahinidis,							      *
+* A hybrid LP/NLP paradigm for global optimization relaxations,				      *
+* Mathematical Programming Computation, 10, 383-421, 2018.				      *
+***********************************************************************************************
+
+********************************************************
+* From the previous data we can conclude that the      *
+* number of voters / experts / decision makers is      *
+* equal to 6 while the number of alternatives Alt(i)   *
+* is equal to 5.				       *
+*						       *
+* Therefore, we have M = 6 and N = 5.		       *	
+********************************************************
+
+********************************************************************
+* Variable declaration section                                     *
+********************************************************************
+
+********************************************************
+* The variabble Z is used for the Objective Function   *
+********************************************************
+* It should not be designated as Positive (although it *
+* will always be positive by definition) as otherwise  *
+* an error message will result.                        *
+********************************************************
+VARIABLES          Z ;
+
+********************************************************
+*** Next are the a_i vars.  That is, the estimated     *
+*** weights of the alternatives.  Thus, we have 5 such *
+*** variables.                                         *
+********************************************************
+POSITIVE VARIABLES a1, a2, a3, a4, a5 ;
+
+********************************************************
+*** The following is the normalization constraint!   ***
+*** Recall we have 5 alternatives (and 6 voters)     ***
+********************************************************
+EQUATIONS Equation1 ;
+
+Equation1.. a1 + a2 + a3 + a4 + a5 =e= 1.0000 ;
+
+
+*********************************************************
+* The variable <ee> is the control parameter <e>        *
+* mentoned in our paper.                                *
+* We experimented with various values for <ee>.         *
+*********************************************************
+* NOTE: In the paper the control parameter is denoted   *
+* as <e> but in this program it is denoted as <ee> in   *
+* order to avoid any confusion with the GAMS            *
+* notation <=e=> (used to denote an                     *
+* equality constraint.                                  *
+********************************************************* 
+
+EQUATIONS Equation2 ;
+VARIABLES ee ;
+Equation2.. ee =e= 0.020 ;  
+**************************************
+* We also used th evalue ee =0.040   *
+**************************************
+
+********************************************************
+*** Next are the X_i,j vars.  That is, the adjustment  *
+*** coefficients.                                      *
+*** Therefore, we have MxN = 6x5 = 30 such variables.  *
+********************************************************
+***********************************************************************************
+* Xi_j are the adjustment coefficienst of voter <i> in terms of alternative <j> 
+***********************************************************************************
+
+POSITIVE VARIABLES X1_1, X1_2, X1_3, X1_4, X1_5,  X2_1, X2_2, X2_3, X2_4, X2_5,  X3_1, X3_2, X3_3, X3_4, X3_5 ;   
+POSITIVE VARIABLES X4_1, X4_2, X4_3, X4_4, X4_5,  X5_1, X5_2, X5_3, X5_4, X5_5,  X6_1, X6_2, X6_3, X6_4, X6_5 ;
+
+********************************************************
+*** The t_i,j variables are auxiliary. They are not    *
+*** mentioned in the paper.  They are used to make the *
+*** model fit easier on the screen of a PC.            *
+*** They are the squared the differences of the        *
+*** adjustment coefficients from the perfect value     *
+*** of 1.  That is, the following is true:	       *
+***       t_i,j = (1 - X_i,j)x(1 - X_i,j).             *
+********************************************************
+
+***********************************************************************************
+* In other words, ti_j is the SQUARED difference between the perfect value 1 and  *
+* the adjustment coefficient of voter <i> in terms of alternative <j>.            *
+***********************************************************************************
+POSITIVE VARIABLES t1_1, t1_2, t1_3, t1_4, t1_5,     t2_1, t2_2, t2_3, t2_4, t2_5,     t3_1, t3_2, t3_3, t3_4, t3_5 ;   
+POSITIVE VARIABLES t4_1, t4_2, t4_3, t4_4, t4_5,     t5_1, t5_2, t5_3, t5_4, t5_5,     t6_1, t6_2, t6_3, t6_4, t6_5 ;
+
+
+*****************************************************************************
+*** Next are the constraint (equations) names for the squared differences.  *
+*****************************************************************************
+
+EQUATIONS e01_1, e01_2, e01_3, e01_4, e01_5,   e02_1, e02_2, e02_3, e02_4, e02_5,   e03_1, e03_2, e03_3, e03_4, e03_5 ;  
+EQUATIONS e04_1, e04_2, e04_3, e04_4, e04_5,   e05_1, e05_2, e05_3, e05_4, e05_5,   e06_1, e06_2, e06_3, e06_4, e06_5 ;
+
+
+****************************************************************************************
+*** The following constraints (equations) define the indivudual squared differences    *
+*** to be used in the Objective Function.                                              *
+**************************************************************************************** 
+
+e01_1.. t1_1 =e= (1 - X1_1) * (1 - X1_1) ;
+e01_2.. t1_2 =e= (1 - X1_2) * (1 - X1_2) ;
+e01_3.. t1_3 =e= (1 - X1_3) * (1 - X1_3) ;
+e01_4.. t1_4 =e= (1 - X1_4) * (1 - X1_4) ;
+e01_5.. t1_5 =e= (1 - X1_5) * (1 - X1_5) ;
+
+e02_1.. t2_1 =e= (1 - X2_1) * (1 - X2_1) ;
+e02_2.. t2_2 =e= (1 - X2_2) * (1 - X2_2) ;
+e02_3.. t2_3 =e= (1 - X2_3) * (1 - X2_3) ;
+e02_4.. t2_4 =e= (1 - X2_4) * (1 - X2_4) ;
+e02_5.. t2_5 =e= (1 - X2_5) * (1 - X2_5) ;
+
+e03_1.. t3_1 =e= (1 - X3_1) * (1 - X3_1) ;
+e03_2.. t3_2 =e= (1 - X3_2) * (1 - X3_2) ;
+e03_3.. t3_3 =e= (1 - X3_3) * (1 - X3_3) ;
+e03_4.. t3_4 =e= (1 - X3_4) * (1 - X3_4) ;
+e03_5.. t3_5 =e= (1 - X3_5) * (1 - X3_5) ;
+
+e04_1.. t4_1 =e= (1 - X4_1) * (1 - X4_1) ;
+e04_2.. t4_2 =e= (1 - X4_2) * (1 - X4_2) ;
+e04_3.. t4_3 =e= (1 - X4_3) * (1 - X4_3) ;
+e04_4.. t4_4 =e= (1 - X4_4) * (1 - X4_4) ;
+e04_5.. t4_5 =e= (1 - X4_5) * (1 - X4_5) ;
+
+e05_1.. t5_1 =e= (1 - X5_1) * (1 - X5_1) ;
+e05_2.. t5_2 =e= (1 - X5_2) * (1 - X5_2) ;
+e05_3.. t5_3 =e= (1 - X5_3) * (1 - X5_3) ;
+e05_4.. t5_4 =e= (1 - X5_4) * (1 - X5_4) ;
+e05_5.. t5_5 =e= (1 - X5_5) * (1 - X5_5) ;
+
+e06_1.. t6_1 =e= (1 - X6_1) * (1 - X6_1) ;
+e06_2.. t6_2 =e= (1 - X6_2) * (1 - X6_2) ;
+e06_3.. t6_3 =e= (1 - X6_3) * (1 - X6_3) ;
+e06_4.. t6_4 =e= (1 - X6_4) * (1 - X6_4) ;
+e06_5.. t6_5 =e= (1 - X6_5) * (1 - X6_5) ;
+
+*************************************************************************** ;
+
+POSITIVE VARIABLES tt ;
+EQUATIONS Equation3   ;
+***********************************************************************************
+* <tt> is the sum of all the squared differences of the adjustment coefficients!
+* It can be the value of the Onjective Function )also given as <Z> 
+***********************************************************************************
+Equation3.. tt =e= t1_1 + t1_2 + t1_3 + t1_4 + t1_5+    t2_1 + t2_2 + t2_3 + t2_4 + t2_5 +    t3_1 + t3_2 + t3_3 + t3_4 + t3_5 +    t4_1 + t4_2 + t4_3 + t4_4 + t4_5 +   t5_1 + t5_2 + t5_3 + t5_4 + t5_5 +   t6_1 + t6_2 + t6_3 + t6_4 + t6_5; 
+
+
+**************************************************************
+*** Next is the definition of the actual Objective Function. * 
+**************************************************************
+EQUATIONS Objective_Function1 ;
+
+Objective_Function1.. Z =e= tt ;
+
+
+*****************************************************************************************
+* These names are to be used for the constraints derived from the individual rankings.  * 
+*****************************************************************************************
+EQUATIONS eq1_1, eq1_2, eq1_3, eq1_4,   eq2_1, eq2_2, eq2_3, eq2_4,   eq3_1, eq3_2, eq3_3, eq3_4 ;   
+EQUATIONS eq4_1, eq4_2, eq4_3, eq4_4,   eq5_1, eq5_2, eq5_3, eq5_4,   eq6_1, eq6_2, eq6_3, eq6_4 ;
+
+
+**************************************************************************************
+*** The following are the constraints due to the rankings proposed by the 6 voters ***
+**************************************************************************************
+
+*** Constraint by Voter #1:  R4 > R1 > R3 > R2 > R5
+***************************************************
+eq1_1..    a4 * X1_4 =g= a1 * X1_1 + ee;
+eq1_2..    a1 * X1_1 =g= a3 * X1_3 + ee;
+eq1_3..    a3 * X1_3 =g= a2 * X1_2 + ee;
+eq1_4..    a2 * X1_2 =g= a5 * X1_5 + ee;
+*** ----------------------------------------- ;
+ 
+*** Constraint by Voter #2:  R5 > R1 > R2 > R4 > R3
+***************************************************
+eq2_1..    a5 * X2_5 =g= a1 * X2_1 + ee;
+eq2_2..    a1 * X2_1 =g= a2 * X2_2 + ee;
+eq2_3..    a2 * X2_2 =g= a4 * X2_4 + ee;
+eq2_4..    a4 * X2_4 =g= a3 * X2_3 + ee;
+*** ----------------------------------------- ;
+
+*** Constraint by Voter #3:  R1 > R4 ~ R5 > R2 > R3
+***************************************************
+eq3_1..    a1 * X3_1 =g= a4 * X3_4 + ee;
+eq3_2..    a4 * X3_4 =e= a5 * X3_5     ;
+eq3_3..    a5 * X3_5 =g= a2 * X3_2 + ee;
+eq3_4..    a2 * X3_2 =g= a3 * X3_3 + ee;
+*** ----------------------------------------- ;
+ 
+*** Constraint by Voter #4:  R1 ~ R5 > R2 ~ R3 ~ R4
+***************************************************
+eq4_1..    a1 * X4_1 =e= a5 * X4_5     ;
+eq4_2..    a5 * X4_5 =g= a2 * X4_2 + ee;
+eq4_3..    a2 * X4_2 =e= a3 * X4_3     ;
+eq4_4..    a3 * X4_3 =e= a4 * X4_4     ;
+*** ----------------------------------------- ;
+ 
+*** Constraint by Voter #5:  R1 > R5 > R4 > R2 > R3
+***************************************************
+eq5_1..    a1 * X5_1 =g= a5 * X5_5 + ee;
+eq5_2..    a5 * X5_5 =g= a4 * X5_4 + ee;
+eq5_3..    a4 * X5_4 =g= a2 * X5_2 + ee;
+eq5_4..    a2 * X5_2 =g= a3 * X5_3 + ee;
+*** ----------------------------------------- ;
+
+*** Constraint by Voter #6:  R1 > R5 > R4 > R2 > R3
+***************************************************
+eq6_1..    a1 * X6_1 =g= a5 * X6_5 + ee;
+eq6_2..    a5 * X6_5 =g= a4 * X6_4 + ee;
+eq6_3..    a4 * X6_4 =g= a2 * X6_2 + ee;
+eq6_4..    a2 * X6_2 =g= a3 * X6_3 + ee;
+*** ----------------------------------------- ;
+ 
+************************************************************************* ;
+
+
+
+Model REAL_EXAMPLE_Original_Model_M1 / all /;
+
+solve REAL_EXAMPLE_Original_Model_M1 using NLP minimizing Z;
